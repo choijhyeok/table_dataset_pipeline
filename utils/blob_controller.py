@@ -14,6 +14,7 @@ from azure.storage.blob import (
     BlobSasPermissions,
     ContentSettings,
 )
+import fitz
 
 class blob_controller:
     def __init__(self, conn: str, container: str):
@@ -62,20 +63,51 @@ class blob_controller:
         file_list = [b.name for b in blobs]
         return file_list
     
-    def download_to_temp(self, blob_name: str, tmp_dir: Path) -> Path:
+    
+    def download_to_temp(self, blob_name: str, tmp_dir: Path | str) -> Path:
         """
-        blob_name(컨테이너 내 경로)을 tmp_dir에 파일로 저장하고 그 경로 반환
+        blob_name(컨테이너 내 경로)을 tmp_dir에 파일로 저장하고 그 경로(Path)를 반환.
+        tmp_dir은 str 또는 Path 모두 허용.
         """
-        tmp_dir.mkdir(parents=True, exist_ok=True)           
+        # str 이 들어와도 Path 로 정규화
+        tmp_dir = Path(tmp_dir)
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+
         local_path = tmp_dir / Path(blob_name).name
 
-        bc: BlobClient = self.container_client.get_blob_client(blob_name)  
+        bc: BlobClient = self.container_client.get_blob_client(blob_name)
         try:
-            stream = bc.download_blob(max_concurrency=4)    
+            stream = bc.download_blob(max_concurrency=4)
             with open(local_path, "wb") as f:
                 for chunk in stream.chunks():
-                    f.write(chunk)
+                    if chunk:
+                        f.write(chunk)
         except ResourceNotFoundError:
             raise FileNotFoundError(f"Blob not found: {blob_name}")
 
         return local_path
+    
+    
+    
+    def open_pdf_from_blob_stream(self, blob_name: str):
+        """
+        디스크 임시파일 없이 Blob을 스트리밍으로 읽어 메모리/스풀 버퍼에 적재한 뒤,
+        fitz.open(stream=..., filetype="pdf")로 바로 연다.
+        - 작은/중간 사이즈 PDF: 메모리에서 처리
+        - 큰 PDF: SpooledTemporaryFile 이 자동으로 디스크로 스필오버
+        """
+        spooled = tempfile.SpooledTemporaryFile(max_size=64 * 1024 * 1024)  # 64MB까지 메모리, 초과 시 디스크 스필오버
+        try:
+            blob_client = self.container_client.get_blob_client(blob_name)
+            stream = blob_client.download_blob(max_concurrency=4)
+            for chunk in stream.chunks():
+                if chunk:
+                    spooled.write(chunk)
+            spooled.seek(0)
+            data = spooled.read()
+            return fitz.open(stream=data, filetype="pdf")
+        finally:
+            try:
+                spooled.close()
+            except Exception:
+                pass

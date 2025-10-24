@@ -16,4 +16,6 @@ dependencies = [
     "ipykernel>=7.0.1",
     "playwright>=1.55.0",
     "pydantic>=2.12.3",
+    "pymupdf>=1.26.5",
+    "pytest>=8.4.2",
 ]

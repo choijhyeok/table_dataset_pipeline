@@ -16,12 +16,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-@app.function_name(name="http_process_main_orchestrator")
+@app.function_name(name="main_process")
 @app.route(
-    route="process-dynamic-main", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS
+    route="process-main", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS
 )
 @app.durable_client_input(client_name="client")
-async def http_process_dynamic_main_orchestrator(
+async def main_process(
     req: func.HttpRequest, client: DurableOrchestrationClient
 ) -> func.HttpResponse:
 
